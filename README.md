@@ -20,15 +20,7 @@ EDA regression runs produce large amounts of synthesis, timing, and physical-des
 
 > **Important:** this project provides **signoff-style automation and reporting around an open-source flow**. It is not a replacement for production foundry signoff methodology or commercial signoff tools.
 
----
 
-## 🖥️ Screenshots
-
-The repository can showcase the generated HTML report, run history/dashboard, and NL-to-TCL workflow here.
-
-<!-- Add committed screenshots below when their repository paths are available. -->
-
----
 
 ## 🏗️ System Architecture
 
