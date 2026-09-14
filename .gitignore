@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# SignOff Copilot run artifacts (can be large)
+runs/
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
+
+# Reports / generated HTML / PDF
+*.pdf
+
+# Environment / secrets
+.env
+.env.*
+*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Yosys / OpenSTA / OpenROAD intermediate outputs
+*.blif
+*.il
+*.json
+*.aig
+
+# Streamlit
+.streamlit/
