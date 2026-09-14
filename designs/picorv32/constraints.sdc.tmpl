@@ -1,0 +1,22 @@
+# designs/picorv32/constraints.sdc.tmpl
+# ─────────────────────────────────────────────────────────────────────────────
+# SDC Template — values in {{...}} are substituted by the orchestrator at
+# runtime from the RunSpec. This fixes the hardcoded clock-period bug.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Clock definition ─────────────────────────────────────────────────────────
+# Period and half-period are filled in from RunSpec.clock_period_ns
+create_clock -name clk -period {clock_period_ns} -waveform {{0 {clock_half_period_ns}}} [get_ports clk]
+
+# Clock quality
+set_clock_uncertainty {clock_uncertainty_ns} [get_clocks clk]
+set_clock_latency     {clock_latency_ns}     [get_clocks clk]
+
+# ── I/O delays ──────────────────────────────────────────────────────────────
+# Filled from RunSpec.input_delay_ns / output_delay_ns
+set_input_delay  -clock clk -max {input_delay_ns}  [all_inputs]
+set_output_delay -clock clk -max {output_delay_ns} [all_outputs]
+
+# Exclude clock and reset from I/O delay constraints
+set_input_delay -clock clk -max 0.0 [get_ports clk]
+set_input_delay -clock clk -max 0.0 [get_ports resetn]

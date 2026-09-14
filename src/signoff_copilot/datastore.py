@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS runs (
     wns_ns                  REAL,
     tns_ns                  REAL,
     num_timing_violations   INTEGER NOT NULL DEFAULT 0,
+    num_setup_violations    INTEGER NOT NULL DEFAULT 0,
+    num_hold_violations     INTEGER NOT NULL DEFAULT 0,
     num_drc_violations      INTEGER NOT NULL DEFAULT 0,
     cell_count              INTEGER NOT NULL DEFAULT 0,
     chip_area_um2           REAL,
@@ -38,7 +40,9 @@ CREATE TABLE IF NOT EXISTS runs (
     timestamp               TEXT    NOT NULL,
     llm_summary             TEXT,
     report_html_path        TEXT,
-    metric_verdicts_json    TEXT    -- JSON blob: list[MetricVerdict]
+    metric_verdicts_json    TEXT,   -- JSON blob: list[MetricVerdict]
+    spec_json               TEXT,   -- JSON blob: RunSpec.to_dict()
+    regression_json         TEXT    -- JSON blob: RegressionReport.to_dict()
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_design    ON runs (design);
@@ -82,7 +86,27 @@ class DataStore:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_DDL)
+            # Migrate existing databases that are missing new columns
+            self._migrate(conn)
         log.debug("DataStore ready: %s", self.db_path)
+
+    _NEW_COLUMNS = [
+        ("num_setup_violations", "INTEGER NOT NULL DEFAULT 0"),
+        ("num_hold_violations",  "INTEGER NOT NULL DEFAULT 0"),
+        ("spec_json",            "TEXT"),
+        ("regression_json",      "TEXT"),
+    ]
+
+    def _migrate(self, conn) -> None:
+        """Add any missing columns to an existing database (safe no-op if already present)."""
+        existing = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        for col_name, col_def in self._NEW_COLUMNS:
+            if col_name not in existing:
+                conn.execute(f"ALTER TABLE runs ADD COLUMN {col_name} {col_def}")
+                log.info("DataStore migration: added column %s", col_name)
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
@@ -92,6 +116,8 @@ class DataStore:
         verdict,                       # RunVerdict
         llm_summary: str = "",
         report_html_path: str = "",
+        spec=None,                     # RunSpec (optional)
+        regression=None,               # RegressionReport (optional)
     ) -> None:
         """
         Insert a new run record.  Raises sqlite3.IntegrityError if run_id
@@ -104,11 +130,15 @@ class DataStore:
                     "value":     v.value,
                     "threshold": v.threshold,
                     "passed":    v.passed,
+                    "outcome":   getattr(v, "outcome", "PASS" if v.passed else "FAIL"),
                     "reason":    v.reason,
                 }
                 for v in verdict.metric_verdicts
             ]
         )
+
+        spec_json_str = json.dumps(spec.to_dict()) if spec is not None else None
+        regression_json_str = json.dumps(regression.to_dict()) if regression is not None else None
 
         with self._connect() as conn:
             conn.execute(
@@ -116,15 +146,19 @@ class DataStore:
                 INSERT INTO runs (
                     run_id, design, clock_period_ns,
                     wns_ns, tns_ns, num_timing_violations,
+                    num_setup_violations, num_hold_violations,
                     num_drc_violations, cell_count, chip_area_um2,
                     utilization_pct, runtime_sec, status, timestamp,
-                    llm_summary, report_html_path, metric_verdicts_json
+                    llm_summary, report_html_path, metric_verdicts_json,
+                    spec_json, regression_json
                 ) VALUES (
                     :run_id, :design, :clock_period_ns,
                     :wns_ns, :tns_ns, :num_timing_violations,
+                    :num_setup_violations, :num_hold_violations,
                     :num_drc_violations, :cell_count, :chip_area_um2,
                     :utilization_pct, :runtime_sec, :status, :timestamp,
-                    :llm_summary, :report_html_path, :metric_verdicts_json
+                    :llm_summary, :report_html_path, :metric_verdicts_json,
+                    :spec_json, :regression_json
                 )
                 """,
                 {
@@ -134,6 +168,8 @@ class DataStore:
                     "wns_ns":               metrics.wns_ns,
                     "tns_ns":               metrics.tns_ns,
                     "num_timing_violations":metrics.num_timing_violations,
+                    "num_setup_violations": metrics.num_setup_violations,
+                    "num_hold_violations":  metrics.num_hold_violations,
                     "num_drc_violations":   metrics.num_drc_violations,
                     "cell_count":           metrics.cell_count,
                     "chip_area_um2":        metrics.chip_area_um2,
@@ -144,6 +180,8 @@ class DataStore:
                     "llm_summary":          llm_summary,
                     "report_html_path":     report_html_path,
                     "metric_verdicts_json": verdicts_json,
+                    "spec_json":            spec_json_str,
+                    "regression_json":      regression_json_str,
                 },
             )
         log.info("Inserted run %s (%s)", metrics.run_id, verdict.overall_status)
@@ -227,3 +265,48 @@ class DataStore:
                 "SELECT DISTINCT design FROM runs ORDER BY design"
             ).fetchall()
         return [r["design"] for r in rows]
+
+    def get_previous_passing_run(
+        self,
+        design: str,
+        before_run_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Return the most recent PASS run for *design* before *before_run_id*.
+
+        Parameters
+        ----------
+        design        : Design name to filter
+        before_run_id : Exclude this run and any runs after it (use the current
+                        run_id so we don't compare a run to itself).
+        """
+        with self._connect() as conn:
+            if before_run_id:
+                # Get the timestamp of the current run to exclude it and later ones
+                ref_row = conn.execute(
+                    "SELECT timestamp FROM runs WHERE run_id = ?", (before_run_id,)
+                ).fetchone()
+                if ref_row:
+                    row = conn.execute(
+                        """
+                        SELECT * FROM runs
+                        WHERE design = ? AND status = 'PASS'
+                          AND timestamp < ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                        """,
+                        (design, ref_row["timestamp"]),
+                    ).fetchone()
+                    return dict(row) if row else None
+
+            # No reference → just return the most recent PASS
+            row = conn.execute(
+                """
+                SELECT * FROM runs
+                WHERE design = ? AND status = 'PASS'
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (design,),
+            ).fetchone()
+        return dict(row) if row else None

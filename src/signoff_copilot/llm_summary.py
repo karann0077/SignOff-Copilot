@@ -180,3 +180,154 @@ def _fallback_summary(metrics, verdict) -> str:
         wns_ns=f"{metrics.wns_ns:.4f}" if metrics.wns_ns is not None else "N/A",
         num_violations=metrics.num_timing_violations,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Extended API: debugging-oriented explanation
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DEBUG_SYSTEM_PROMPT = """\
+You are a senior IC design verification engineer.  A junior engineer has run an
+EDA signoff flow. The pass/fail verdict has already been determined
+deterministically by the rules engine — you CANNOT change it.
+
+Your job is to explain WHAT failed, HOW severe it is, WHICH metric caused
+the most concern, WHETHER it is a regression vs. a previous passing run, and
+WHICH area of the implementation the engineer should investigate first.
+
+Rules:
+- 3–6 sentences maximum.
+- Be concrete: mention specific metric values and thresholds.
+- Never claim the run passed if the verdict says FAIL.
+- If there are MISSING metrics, explain that the tool could not measure them.
+- If there are UNSUPPORTED requirements, note them briefly.
+- End with ONE specific next debugging step.
+"""
+
+_DEBUG_USER_TEMPLATE = """\
+## SignOff Debug Explanation Request
+
+Design         : {design}
+Clock period   : {clock_period_ns:.2f} ns  ({freq_mhz:.0f} MHz)
+Overall Verdict: {status}
+
+### Failed / Missing Requirements
+{failed_section}
+
+### Regression vs. previous PASS run (run {compared_run_id})
+{regression_section}
+
+### Unsupported requirements (not measurable by current flow)
+{unsupported_section}
+
+### Worst Timing Path Excerpt
+```
+{worst_path}
+```
+
+Write your 3–6 sentence plain-English debugging explanation now:
+"""
+
+
+def generate_debug_explanation(
+    metrics,           # ParsedMetrics
+    verdict,           # RunVerdict
+    spec=None,         # RunSpec  (optional — for context)
+    regression=None,   # RegressionReport (optional)
+    model: str = "gpt-4o-mini",
+    max_tokens: int = 450,
+    api_base_url: Optional[str] = None,
+) -> str:
+    """
+    Generate a debugging-oriented AI explanation for a signoff run.
+
+    Provides richer context than generate_summary(): includes failed
+    requirements with thresholds, regression deltas, and missing metrics.
+
+    Falls back to generate_summary() if the API is unavailable.
+    """
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return generate_summary(metrics, verdict, model, max_tokens, api_base_url)
+
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY")
+    if not api_key:
+        return generate_summary(metrics, verdict, model, max_tokens, api_base_url)
+
+    user_prompt = _build_debug_prompt(metrics, verdict, spec, regression)
+
+    try:
+        client_kwargs: dict = {"api_key": api_key}
+        if api_base_url:
+            client_kwargs["base_url"] = api_base_url
+
+        client = OpenAI(**client_kwargs)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _DEBUG_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.25,
+        )
+        explanation = response.choices[0].message.content.strip()
+        log.info("LLM debug explanation generated (%d chars)", len(explanation))
+        return explanation
+
+    except Exception as exc:
+        log.warning("LLM API call failed: %s — using fallback", exc)
+        return generate_summary(metrics, verdict, model, max_tokens, api_base_url)
+
+
+def _build_debug_prompt(metrics, verdict, spec, regression) -> str:
+    from .rules_engine import Outcome
+
+    # Failed section
+    failed = verdict.failed_metrics
+    if failed:
+        failed_lines = [
+            f"  • {v.metric}: value={v.value}, threshold={v.threshold}, "
+            f"outcome={v.outcome} — {v.reason}"
+            for v in failed
+        ]
+        failed_section = "\n".join(failed_lines)
+    else:
+        failed_section = "  None (run passed all checks)"
+
+    # Regression section
+    compared_run_id = "N/A"
+    if regression and regression.compared_run_id:
+        compared_run_id = regression.compared_run_id
+        reg_lines = regression.summary_lines()
+        regression_section = "\n".join(reg_lines) if reg_lines else "  No measurable regressions."
+    else:
+        regression_section = "  Regression comparison not requested or no previous run available."
+
+    # Unsupported section
+    unsupported = verdict.unsupported_metrics
+    if unsupported:
+        unsupported_section = "\n".join(
+            f"  • {v.metric}: {v.reason}" for v in unsupported
+        )
+    else:
+        unsupported_section = "  None."
+
+    # Path excerpt
+    path_lines = (metrics.worst_path_excerpt or "Not available").splitlines()
+    path_excerpt = "\n".join(path_lines[:60])
+
+    freq_mhz = 1000.0 / metrics.clock_period_ns if metrics.clock_period_ns else 0.0
+
+    return _DEBUG_USER_TEMPLATE.format(
+        design=metrics.design,
+        clock_period_ns=metrics.clock_period_ns,
+        freq_mhz=freq_mhz,
+        status=verdict.overall_status,
+        failed_section=failed_section,
+        compared_run_id=compared_run_id,
+        regression_section=regression_section,
+        unsupported_section=unsupported_section,
+        worst_path=path_excerpt,
+    )

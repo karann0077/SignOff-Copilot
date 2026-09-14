@@ -90,21 +90,27 @@ def run(
     from .parser           import parse_run
     from .rules_engine     import RulesEngine
     from .report_generator import ReportGenerator
-    from .llm_summary      import generate_summary
+    from .llm_summary      import generate_debug_explanation
     from .datastore        import DataStore
     from .notifier         import notify_run_complete
+    from .spec_interpreter import spec_from_flags
+    from .regression       import compare_runs, no_regression_report
 
     root = ctx.obj["project_root"]
 
     click.echo(f"🚀  SignOff Copilot starting run for design '{design}' @ {clock_period} ns ...")
 
-    # ── 1. Orchestrate ────────────────────────────────────────────────────────
-    orchestrator = Orchestrator(project_root=root)
-    orch_result  = orchestrator.run(
+    # ── 0. Build RunSpec from CLI flags ───────────────────────────────────────
+    spec = spec_from_flags(
         design=design,
         clock_period_ns=clock_period,
-        enable_pnr=pnr,
+        thresholds_path=root / "config" / "thresholds.yaml",
     )
+
+    # ── 1. Orchestrate ────────────────────────────────────────────────────────
+    orchestrator = Orchestrator(project_root=root)
+    orch_result  = orchestrator.run(design=design, clock_period_ns=clock_period,
+                                    enable_pnr=pnr, spec=spec)
     _print_stage_summary(orch_result.stages)
 
     # ── 2. Parse ──────────────────────────────────────────────────────────────
@@ -120,9 +126,9 @@ def run(
         drc_rpt_path=orch_result.drc_rpt_path,
     )
 
-    # ── 3. Rules engine ───────────────────────────────────────────────────────
+    # ── 3. Rules engine (driven by RunSpec) ───────────────────────────────────
     click.echo("⚖️   Evaluating thresholds ...")
-    engine  = RulesEngine(thresholds_path=root / "config" / "thresholds.yaml")
+    engine  = RulesEngine(spec=spec)
     verdict = engine.evaluate(metrics)
     metrics.status = verdict.overall_status
 
@@ -132,14 +138,37 @@ def run(
     for line in verdict.summary_lines():
         click.echo(line)
 
-    # ── 4. LLM summary ───────────────────────────────────────────────────────
+    # ── 4. Regression analysis ────────────────────────────────────────────────
+    db_path = Path(db) if db else (root / "runs" / "signoff.db")
+    store   = DataStore(db_path=db_path)
+
+    regression = no_regression_report(design)
+    if spec.compare_with_previous or spec.compare_with_run_id:
+        click.echo("\n🔁  Comparing with previous passing run ...")
+        prev_row = (
+            store.get_run(spec.compare_with_run_id)
+            if spec.compare_with_run_id
+            else store.get_previous_passing_run(design, before_run_id=orch_result.run_id)
+        )
+        regression = compare_runs(metrics, prev_row)
+        if regression.any_regression:
+            click.echo(click.style("  ⚠ Regressions detected:", fg="yellow", bold=True))
+        else:
+            click.echo("  ✓ No regressions detected.")
+        for line in regression.summary_lines():
+            click.echo(line)
+
+    # ── 5. LLM explanation ────────────────────────────────────────────────────
     llm_summary = ""
     if not no_llm:
-        click.echo("\n🤖  Generating AI summary ...")
-        llm_summary = generate_summary(metrics, verdict)
+        click.echo("\n🤖  Generating AI debug explanation ...")
+        llm_summary = generate_debug_explanation(
+            metrics=metrics, verdict=verdict,
+            spec=spec, regression=regression,
+        )
         click.echo(f"\n  {llm_summary}")
 
-    # ── 5. Report ─────────────────────────────────────────────────────────────
+    # ── 6. Report ─────────────────────────────────────────────────────────────
     click.echo("\n📄  Generating HTML report ...")
     generator = ReportGenerator(templates_dir=root / "src" / "signoff_copilot" / "templates")
     report_path = generator.render(
@@ -150,24 +179,24 @@ def run(
     )
     click.echo(f"  Report written to: {report_path}")
 
-    # ── 6. Data store ─────────────────────────────────────────────────────────
-    db_path = Path(db) if db else (root / "runs" / "signoff.db")
-    store   = DataStore(db_path=db_path)
+    # ── 7. Data store ─────────────────────────────────────────────────────────
     store.insert_run(
         metrics=metrics,
         verdict=verdict,
         llm_summary=llm_summary,
         report_html_path=str(report_path),
+        spec=spec,
+        regression=regression,
     )
     click.echo(f"  Run saved to database: {db_path}")
 
-    # ── 7. Notify ─────────────────────────────────────────────────────────────
+    # ── 8. Notify ─────────────────────────────────────────────────────────────
     if not no_notify:
         results = notify_run_complete(metrics, verdict, llm_summary, report_path)
         for backend, ok in results.items():
             click.echo(f"  Notification ({backend}): {'sent ✓' if ok else 'failed ✗'}")
 
-    # ── 8. Open browser ──────────────────────────────────────────────────────
+    # ── 9. Open browser ───────────────────────────────────────────────────────
     if open_report:
         webbrowser.open(f"file://{report_path.resolve()}")
 
@@ -274,6 +303,168 @@ def ask(ctx: click.Context, request: tuple[str, ...], dry_run: bool) -> None:
         if result.tcl:
             click.echo(f"  (Generated but blocked by allowlist: {result.tcl})")
         sys.exit(1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# signoff-copilot analyze  (NL-first interface)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@main.command()
+@click.option("--request",    "-r", required=True,  help="Natural-language signoff/debug request.")
+@click.option("--design",     "-d", required=True,  help="Design name (must match designs/<name>/).")
+@click.option("--pnr",        is_flag=True, default=False, help="Enable OpenROAD place-and-route.")
+@click.option("--no-llm",     is_flag=True, default=False, help="Skip LLM explanation (offline mode).")
+@click.option("--no-notify",  is_flag=True, default=False, help="Skip Slack/email notifications.")
+@click.option("--open-report",is_flag=True, default=False, help="Open HTML report in browser.")
+@click.option("--db",         default=None, type=click.Path(), help="Path to SQLite database.")
+@click.pass_context
+def analyze(
+    ctx: click.Context,
+    request: str,
+    design: str,
+    pnr: bool,
+    no_llm: bool,
+    no_notify: bool,
+    open_report: bool,
+    db: str | None,
+) -> None:
+    """Run a full signoff analysis driven by a natural-language request.
+
+    Example:
+        signoff-copilot analyze -d picorv32 -r \\
+          "Check timing at 300 MHz, area below 25000 um2, and compare with last passing run"
+    """
+    from .orchestrator     import Orchestrator
+    from .parser           import parse_run
+    from .rules_engine     import RulesEngine
+    from .report_generator import ReportGenerator
+    from .llm_summary      import generate_debug_explanation
+    from .datastore        import DataStore
+    from .notifier         import notify_run_complete
+    from .spec_interpreter import spec_from_nl
+    from .regression       import compare_runs, no_regression_report
+
+    root = ctx.obj["project_root"]
+
+    click.echo(f"🧠  Interpreting request: {request!r}")
+
+    # ── 0. Parse NL request into RunSpec ──────────────────────────────────────
+    spec = spec_from_nl(
+        nl_request=request,
+        design=design,
+        thresholds_path=root / "config" / "thresholds.yaml",
+    )
+
+    # Override design from flag (takes precedence)
+    spec.design = design
+
+    # Surface unsupported requirements before running
+    if spec.unsupported_requirements:
+        click.echo(click.style(
+            f"\n  ⚠ Unsupported requirements (not measurable by this flow):", fg="yellow"
+        ))
+        for req in spec.unsupported_requirements:
+            click.echo(f"    • {req}")
+
+    freq = spec.resolved_freq_mhz()
+    period = spec.resolved_clock_period_ns()
+    click.echo(
+        f"\n🚀  Running: design='{design}'  clock={period:.2f} ns ({freq:.0f} MHz)  "
+        f"checks: setup={spec.check_setup}, hold={spec.check_hold}, "
+        f"area={'yes' if spec.max_chip_area_um2 else 'no'}, "
+        f"util={'yes' if spec.max_utilization_pct else 'no'}, "
+        f"regression={spec.compare_with_previous}"
+    )
+
+    # ── 1. Orchestrate ────────────────────────────────────────────────────────
+    orchestrator = Orchestrator(project_root=root)
+    orch_result  = orchestrator.run(design=design, spec=spec, enable_pnr=pnr)
+    _print_stage_summary(orch_result.stages)
+
+    # ── 2. Parse ──────────────────────────────────────────────────────────────
+    click.echo("📊  Parsing EDA logs ...")
+    metrics = parse_run(
+        run_id=orch_result.run_id,
+        design=design,
+        clock_period_ns=period,
+        runtime_sec=orch_result.total_runtime_sec,
+        timestamp=orch_result.timestamp,
+        synth_log_path=orch_result.synth_log_path,
+        timing_rpt_path=orch_result.timing_rpt_path,
+        drc_rpt_path=orch_result.drc_rpt_path,
+    )
+
+    # ── 3. Rules engine ───────────────────────────────────────────────────────
+    click.echo("⚖️   Evaluating thresholds ...")
+    engine  = RulesEngine(spec=spec)
+    verdict = engine.evaluate(metrics)
+    metrics.status = verdict.overall_status
+
+    badge = click.style("PASS", fg="green", bold=True) if verdict.overall_status == "PASS" \
+            else click.style("FAIL", fg="red", bold=True)
+    click.echo(f"\n  Verdict: {badge}")
+    for line in verdict.summary_lines():
+        click.echo(line)
+
+    # ── 4. Regression analysis ────────────────────────────────────────────────
+    db_path = Path(db) if db else (root / "runs" / "signoff.db")
+    store   = DataStore(db_path=db_path)
+
+    regression = no_regression_report(design)
+    if spec.compare_with_previous or spec.compare_with_run_id:
+        click.echo("\n🔁  Comparing with previous passing run ...")
+        prev_row = (
+            store.get_run(spec.compare_with_run_id)
+            if spec.compare_with_run_id
+            else store.get_previous_passing_run(design, before_run_id=orch_result.run_id)
+        )
+        regression = compare_runs(metrics, prev_row)
+        if regression.any_regression:
+            click.echo(click.style("  ⚠ Regressions detected:", fg="yellow", bold=True))
+        else:
+            click.echo("  ✓ No regressions detected.")
+        for line in regression.summary_lines():
+            click.echo(line)
+
+    # ── 5. LLM explanation ────────────────────────────────────────────────────
+    llm_summary = ""
+    if not no_llm:
+        click.echo("\n🤖  Generating AI debug explanation ...")
+        llm_summary = generate_debug_explanation(
+            metrics=metrics, verdict=verdict,
+            spec=spec, regression=regression,
+        )
+        click.echo(f"\n  {llm_summary}")
+
+    # ── 6. Report ─────────────────────────────────────────────────────────────
+    click.echo("\n📄  Generating HTML report ...")
+    generator = ReportGenerator(templates_dir=root / "src" / "signoff_copilot" / "templates")
+    report_path = generator.render(
+        metrics=metrics, verdict=verdict,
+        llm_summary=llm_summary, output_dir=orch_result.run_dir,
+    )
+    click.echo(f"  Report written to: {report_path}")
+
+    # ── 7. Data store ─────────────────────────────────────────────────────────
+    store.insert_run(
+        metrics=metrics, verdict=verdict,
+        llm_summary=llm_summary, report_html_path=str(report_path),
+        spec=spec, regression=regression,
+    )
+    click.echo(f"  Run saved to database: {db_path}")
+
+    # ── 8. Notify ─────────────────────────────────────────────────────────────
+    if not no_notify:
+        results = notify_run_complete(metrics, verdict, llm_summary, report_path)
+        for backend, ok in results.items():
+            click.echo(f"  Notification ({backend}): {'sent ✓' if ok else 'failed ✗'}")
+
+    # ── 9. Open browser ───────────────────────────────────────────────────────
+    if open_report:
+        webbrowser.open(f"file://{report_path.resolve()}")
+
+    click.echo(f"\n✅  Done in {orch_result.total_runtime_sec:.1f} s — run ID: {orch_result.run_id}")
+    sys.exit(0 if verdict.overall_status == "PASS" else 1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

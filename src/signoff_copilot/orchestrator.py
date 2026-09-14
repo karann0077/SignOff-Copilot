@@ -101,18 +101,29 @@ class Orchestrator:
     def run(
         self,
         design: str,
-        clock_period_ns: float,
+        clock_period_ns: float = 4.0,   # kept for backward compat
         enable_pnr: bool = False,
+        spec=None,                       # RunSpec (preferred); overrides clock_period_ns
     ) -> OrchestrationResult:
         """
-        Execute the full EDA flow for *design* at *clock_period_ns*.
+        Execute the full EDA flow for *design*.
 
         Parameters
         ----------
         design          : Design name (must match a subdirectory under designs/)
-        clock_period_ns : Target clock period in nanoseconds
+        clock_period_ns : Target clock period in ns (used when spec is None)
         enable_pnr      : If True, run OpenROAD P&R after STA
+        spec            : RunSpec (preferred). If provided, all timing parameters
+                          are read from it; clock_period_ns is ignored.
         """
+        # Resolve the RunSpec
+        if spec is not None:
+            clock_period_ns = spec.resolved_clock_period_ns(fallback=clock_period_ns)
+        else:
+            # Legacy path: build a minimal spec from the bare clock period
+            from .spec_interpreter import spec_from_flags
+            spec = spec_from_flags(design=design, clock_period_ns=clock_period_ns)
+
         run_id   = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
         ts       = datetime.now(timezone.utc).isoformat()
         run_dir  = self.runs_dir / run_id
@@ -130,11 +141,14 @@ class Orchestrator:
             timestamp=ts,
         )
 
-        # Write run metadata
-        self._write_run_config(run_dir, design, clock_period_ns, enable_pnr, ts)
+        # Write run metadata (now includes full spec)
+        self._write_run_config(run_dir, design, clock_period_ns, enable_pnr, ts, spec)
 
         log.info("Starting run %s for design '%s' (clock=%.2f ns)", run_id, design, clock_period_ns)
         flow_start = time.perf_counter()
+
+        # ── Generate per-run SDC from template (Bug 1 fix) ───────────────────
+        sdc_path = self._generate_sdc(design_dir, run_dir, spec)
 
         # ── Stage 1: Synthesis ────────────────────────────────────────────────
         synth_result = self._run_synthesis(design, design_dir, run_dir)
@@ -148,7 +162,7 @@ class Orchestrator:
             return result
 
         # ── Stage 2: Static Timing Analysis ──────────────────────────────────
-        sta_result = self._run_sta(design, design_dir, run_dir, clock_period_ns)
+        sta_result = self._run_sta(design, design_dir, run_dir, clock_period_ns, sdc_path)
         result.stages.append(sta_result)
         result.timing_rpt_path = run_dir / "timing.rpt"
 
@@ -203,19 +217,22 @@ class Orchestrator:
         design_dir: Path,
         run_dir: Path,
         clock_period_ns: float,
+        sdc_path: Optional[Path] = None,
     ) -> StageResult:
         sta_script  = design_dir / "sta.tcl"
         timing_rpt  = run_dir / "timing.rpt"
         netlist     = run_dir / "netlist.v"
-        sdc         = design_dir / "constraints.sdc"
+
+        # Use the per-run generated SDC (Bug 1 fix); fall back to static file
+        sdc = sdc_path if (sdc_path and sdc_path.exists()) else (design_dir / "constraints.sdc")
 
         env = self._base_env()
         env.update({
-            "DESIGN_TOP": design,
-            "LIBERTY":    self._liberty_path(),
-            "NETLIST":    str(netlist),
-            "SDC":        str(sdc),
-            "TIMING_RPT": str(timing_rpt),
+            "DESIGN_TOP":   design,
+            "LIBERTY":      self._liberty_path(),
+            "NETLIST":      str(netlist),
+            "SDC":          str(sdc),
+            "TIMING_RPT":   str(timing_rpt),
             "CLOCK_PERIOD": str(clock_period_ns),
         })
 
@@ -364,12 +381,58 @@ class Orchestrator:
         clock_period_ns: float,
         enable_pnr: bool,
         timestamp: str,
+        spec=None,
     ) -> None:
         cfg = {
             "design":          design,
             "clock_period_ns": clock_period_ns,
             "enable_pnr":      enable_pnr,
             "timestamp":       timestamp,
+            "spec":            spec.to_dict() if spec is not None else None,
         }
         with open(run_dir / "run_config.yaml", "w", encoding="utf-8") as f:
             yaml.dump(cfg, f, default_flow_style=False)
+
+    def _generate_sdc(
+        self,
+        design_dir: Path,
+        run_dir: Path,
+        spec,   # RunSpec
+    ) -> Path:
+        """
+        Generate a per-run SDC file by substituting RunSpec values into the
+        design's constraints.sdc.tmpl template.
+
+        Returns the path to the generated SDC.  Falls back to the static
+        constraints.sdc if the template is missing (backward compatibility).
+        """
+        tmpl_path   = design_dir / "constraints.sdc.tmpl"
+        static_path = design_dir / "constraints.sdc"
+        out_path    = run_dir / "constraints_runtime.sdc"
+
+        if not tmpl_path.exists():
+            log.warning(
+                "SDC template not found at %s — using static constraints.sdc "
+                "(clock period may be hardcoded)", tmpl_path
+            )
+            return static_path
+
+        period   = spec.resolved_clock_period_ns()
+        half     = round(period / 2.0, 6)
+        unc      = spec.clock_uncertainty_ns if spec.clock_uncertainty_ns is not None else 0.0
+        latency  = spec.clock_latency_ns     if spec.clock_latency_ns     is not None else 0.0
+        in_del   = spec.input_delay_ns       if spec.input_delay_ns       is not None else 0.5
+        out_del  = spec.output_delay_ns      if spec.output_delay_ns      is not None else 0.5
+
+        tmpl = tmpl_path.read_text(encoding="utf-8")
+        sdc  = tmpl.format(
+            clock_period_ns=period,
+            clock_half_period_ns=half,
+            clock_uncertainty_ns=unc,
+            clock_latency_ns=latency,
+            input_delay_ns=in_del,
+            output_delay_ns=out_del,
+        )
+        out_path.write_text(sdc, encoding="utf-8")
+        log.info("Generated per-run SDC: %s (period=%.3f ns)", out_path.name, period)
+        return out_path

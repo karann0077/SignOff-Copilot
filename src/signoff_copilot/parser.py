@@ -33,7 +33,15 @@ class ParsedMetrics:
     # ── Timing ───────────────────────────────────────────────────────────────
     wns_ns: Optional[float] = None          # Worst Negative Slack (negative = violation)
     tns_ns: Optional[float] = None          # Total Negative Slack
-    num_timing_violations: int = 0          # Count of setup violations
+
+    # Separated setup and hold violation counts (Bug 3 fix)
+    num_setup_violations: int = 0           # Paths failing setup (max delay) check
+    num_hold_violations: int = 0            # Paths failing hold  (min delay) check
+
+    @property
+    def num_timing_violations(self) -> int:
+        """Total timing violations = setup + hold (backward-compat property)."""
+        return self.num_setup_violations + self.num_hold_violations
 
     # ── Physical ─────────────────────────────────────────────────────────────
     num_drc_violations: int = 0
@@ -56,19 +64,21 @@ class ParsedMetrics:
 
     def to_dict(self) -> dict:
         return {
-            "run_id":               self.run_id,
-            "design":               self.design,
-            "clock_period_ns":      self.clock_period_ns,
-            "wns_ns":               self.wns_ns,
-            "tns_ns":               self.tns_ns,
-            "num_timing_violations":self.num_timing_violations,
-            "num_drc_violations":   self.num_drc_violations,
-            "cell_count":           self.cell_count,
-            "chip_area_um2":        self.chip_area_um2,
-            "utilization_pct":      self.utilization_pct,
-            "runtime_sec":          self.runtime_sec,
-            "status":               self.status,
-            "timestamp":            self.timestamp,
+            "run_id":                self.run_id,
+            "design":                self.design,
+            "clock_period_ns":       self.clock_period_ns,
+            "wns_ns":                self.wns_ns,
+            "tns_ns":                self.tns_ns,
+            "num_setup_violations":  self.num_setup_violations,
+            "num_hold_violations":   self.num_hold_violations,
+            "num_timing_violations": self.num_timing_violations,
+            "num_drc_violations":    self.num_drc_violations,
+            "cell_count":            self.cell_count,
+            "chip_area_um2":         self.chip_area_um2,
+            "utilization_pct":       self.utilization_pct,
+            "runtime_sec":           self.runtime_sec,
+            "status":                self.status,
+            "timestamp":             self.timestamp,
         }
 
 
@@ -226,9 +236,17 @@ def _parse_timing_report(path: Path, m: ParsedMetrics) -> None:
             m.tns_ns = 0.0
         log.warning("Could not parse TNS from %s — using fallback sum")
 
-    # ── Violation count ───────────────────────────────────────────────────────
-    m.num_timing_violations = len(_RE_SLACK_VIOLATED.findall(text))
-    log.debug("Timing violations: %d", m.num_timing_violations)
+    # ── Violation counts: setup vs hold ───────────────────────────────────────
+    # The OpenSTA report has two sections:
+    #   1) report_checks -path_delay max  → setup violations
+    #   2) report_checks -path_delay min  → hold violations
+    # We split on the second "report_checks" header to separate them.
+    setup_text, hold_text = _split_setup_hold_sections(text)
+    m.num_setup_violations = len(_RE_SLACK_VIOLATED.findall(setup_text))
+    m.num_hold_violations  = len(_RE_SLACK_VIOLATED.findall(hold_text))
+    log.debug("Setup violations: %d, Hold violations: %d",
+              m.num_setup_violations, m.num_hold_violations)
+
 
     # ── Worst-path excerpt ────────────────────────────────────────────────────
     m.worst_path_excerpt = _extract_worst_path(text)
@@ -285,3 +303,34 @@ def _extract_worst_path(text: str, max_chars: int = 2000) -> str:
         return excerpt[:max_chars]
 
     return text[max(0, first_violated.start() - 100):first_violated.end() + 100].strip()
+
+
+def _split_setup_hold_sections(text: str) -> tuple[str, str]:
+    """
+    Split an OpenSTA report into (setup_section, hold_section).
+
+    OpenSTA writes:
+      report_checks -path_delay max ...  (setup paths)
+      report_wns / report_tns
+      report_checks -path_delay min ...  (hold paths)
+
+    We find the *second* occurrence of "report_checks" (or "-path_delay min")
+    to mark the boundary. If no hold section is found, hold_section is empty.
+    """
+    # Marker for the hold section start
+    hold_markers = [
+        "report_checks -path_delay min",
+        "-path_delay       min",
+        "-path_delay min",
+    ]
+    split_pos = None
+    for marker in hold_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            split_pos = idx
+            break
+
+    if split_pos is None:
+        return text, ""
+
+    return text[:split_pos], text[split_pos:]

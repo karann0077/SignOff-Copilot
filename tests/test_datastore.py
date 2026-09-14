@@ -29,7 +29,8 @@ def _sample_metrics(run_id: str = "2026-09-14T10-00-00") -> ParsedMetrics:
         clock_period_ns=4.0,
         wns_ns=0.22,
         tns_ns=0.0,
-        num_timing_violations=0,
+        num_setup_violations=0,   # replaces num_timing_violations constructor arg
+        num_hold_violations=0,
         num_drc_violations=0,
         cell_count=3421,
         chip_area_um2=12345.67,
@@ -41,11 +42,12 @@ def _sample_metrics(run_id: str = "2026-09-14T10-00-00") -> ParsedMetrics:
 
 
 def _sample_verdict(status: str = "PASS") -> RunVerdict:
+    from signoff_copilot.rules_engine import Outcome
     return RunVerdict(
         overall_status=status,
         metric_verdicts=[
-            MetricVerdict("WNS (ns)", 0.22, 0.0, True, "0.2200 ns ≥ 0.0ns"),
-            MetricVerdict("TNS (ns)", 0.0,  0.0, True, "0.0000 ns ≥ 0.0ns"),
+            MetricVerdict("WNS (ns)", 0.22, 0.0, True, Outcome.PASS, "0.2200 ns ≥ 0.0ns"),
+            MetricVerdict("TNS (ns)", 0.0,  0.0, True, Outcome.PASS, "0.0000 ns ≥ 0.0ns"),
         ],
     )
 
