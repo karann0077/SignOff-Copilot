@@ -1,0 +1,64 @@
+
+18. Executing SYNTH pass.
+
+-- Running hierarchy --.
+
+13. Executing CHECK pass (checking signal names).
+Warning: multiple conflicting drivers for \cpuregs[0][0]:
+    port 'Q' of cell '_23_ (sky130_fd_sc_hd__dfxtp_1)'
+    port 'Q' of cell '_24_ (sky130_fd_sc_hd__dfxtp_1)'
+
+-- Running clean pass --
+
+=== picorv32 ===
+
+   Number of wires:                 4521
+   Number of public wires:          2198
+   Number of bits:                  8964
+   Number of public bits:           3421
+   Number of memories:                 0
+   Number of memory bits:              0
+   Number of processes:                0
+   Number of cells:               3421
+     sky130_fd_sc_hd__a21oi_1       142
+     sky130_fd_sc_hd__a21o_1         88
+     sky130_fd_sc_hd__a211o_1        43
+     sky130_fd_sc_hd__a22oi_1        91
+     sky130_fd_sc_hd__a22o_1         67
+     sky130_fd_sc_hd__a31oi_1        38
+     sky130_fd_sc_hd__a32oi_1        22
+     sky130_fd_sc_hd__and2_1        234
+     sky130_fd_sc_hd__and3_1         76
+     sky130_fd_sc_hd__and4_1         29
+     sky130_fd_sc_hd__buf_1         198
+     sky130_fd_sc_hd__buf_2         145
+     sky130_fd_sc_hd__buf_4          87
+     sky130_fd_sc_hd__clkinv_1       92
+     sky130_fd_sc_hd__dfxtp_1       521
+     sky130_fd_sc_hd__dfxtp_2       384
+     sky130_fd_sc_hd__inv_1         104
+     sky130_fd_sc_hd__mux2_1        178
+     sky130_fd_sc_hd__mux2i_1        64
+     sky130_fd_sc_hd__nand2_1       198
+     sky130_fd_sc_hd__nand2_2        76
+     sky130_fd_sc_hd__nand3_1        84
+     sky130_fd_sc_hd__nand4_1        31
+     sky130_fd_sc_hd__nor2_1        143
+     sky130_fd_sc_hd__nor3_1         72
+     sky130_fd_sc_hd__o21ai_1       124
+     sky130_fd_sc_hd__o21a_1         89
+     sky130_fd_sc_hd__o22ai_1        58
+     sky130_fd_sc_hd__o22a_1         43
+     sky130_fd_sc_hd__o31ai_1        18
+     sky130_fd_sc_hd__or2_1         129
+     sky130_fd_sc_hd__or3_1          71
+     sky130_fd_sc_hd__or4_1          14
+     sky130_fd_sc_hd__xnor2_1        93
+     sky130_fd_sc_hd__xor2_1         84
+
+Chip area for module '\picorv32': 21654.397600
+
+End of script. Logfile hash: 3c4e5f6a7b, writing to file.
+CPU: user 12.34s system 0.18s, elapsed 12.59s
+Memory: 145.3 MB
+

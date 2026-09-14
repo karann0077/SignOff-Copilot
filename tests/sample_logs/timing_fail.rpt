@@ -1,0 +1,144 @@
+OpenSTA 2.6.0 - Copyright (c) 2021, Parallax Software, Inc.
+License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
+
+This is free software, and you are free to change and redistribute it.
+OpenSTA comes with ABSOLUTELY NO WARRANTY, to the extent permitted by law.
+
+===========================================================================
+report_checks -path_delay max -format full_clock_expanded -group_count 20
+===========================================================================
+
+======================= Slowest Paths ===========================
+
+Startpoint: _100_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: _200_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ _100_/CLK (sky130_fd_sc_hd__dfxtp_1)
+   0.18    0.18 ^ _100_/Q (sky130_fd_sc_hd__dfxtp_1)
+   0.14    0.32 ^ _1010_/A (sky130_fd_sc_hd__buf_4)
+   0.18    0.50 ^ _1010_/X (sky130_fd_sc_hd__buf_4)
+   0.23    0.73 ^ _1100_/A (sky130_fd_sc_hd__and3_1)
+   0.27    1.00 ^ _1100_/X (sky130_fd_sc_hd__and3_1)
+   0.15    1.15 v _1200_/A1 (sky130_fd_sc_hd__a21oi_1)
+   0.14    1.29 v _1200_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.34    1.63 ^ _1300_/C (sky130_fd_sc_hd__o21ai_1)
+   0.19    1.82 v _1300_/Y (sky130_fd_sc_hd__o21ai_1)
+   0.28    2.10 v _1400_/A (sky130_fd_sc_hd__buf_2)
+   0.17    2.27 v _1400_/X (sky130_fd_sc_hd__buf_2)
+   0.43    2.70 ^ _1500_/B (sky130_fd_sc_hd__xnor2_1)
+   0.38    3.08 ^ _1500_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.25    3.33 ^ _1600_/A (sky130_fd_sc_hd__and2_1)
+   0.42    3.75 ^ _1600_/X (sky130_fd_sc_hd__and2_1)
+   0.23    3.98 ^ _200_/D (sky130_fd_sc_hd__dfxtp_1)
+   3.98    3.98   data arrival time
+
+   4.00    4.00   clock clk (rise edge)
+   0.00    4.00   clock network delay (ideal)
+   4.00    4.00   _200_/CLK (sky130_fd_sc_hd__dfxtp_1)
+  -0.27    3.73   library setup time
+   3.73    3.73   data required time
+---------------------------------------------------------
+   3.73    3.73   data required time
+  -3.98   -3.98   data arrival time
+---------------------------------------------------------
+                   slack (VIOLATED) -0.25
+
+Startpoint: _101_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: _201_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ _101_/CLK (sky130_fd_sc_hd__dfxtp_2)
+   0.21    0.21 ^ _101_/Q (sky130_fd_sc_hd__dfxtp_2)
+   0.18    0.39 ^ _2010_/A (sky130_fd_sc_hd__buf_1)
+   0.19    0.58 ^ _2010_/X (sky130_fd_sc_hd__buf_1)
+   0.25    0.83 v _2100_/A (sky130_fd_sc_hd__nand3_1)
+   0.16    0.99 v _2100_/Y (sky130_fd_sc_hd__nand3_1)
+   0.32    1.31 ^ _2200_/A2 (sky130_fd_sc_hd__a22oi_1)
+   0.28    1.59 v _2200_/Y (sky130_fd_sc_hd__a22oi_1)
+   0.40    1.99 ^ _2300_/B2 (sky130_fd_sc_hd__o22ai_1)
+   0.36    2.35 ^ _2300_/Y (sky130_fd_sc_hd__o22ai_1)
+   0.19    2.54 ^ _2400_/A (sky130_fd_sc_hd__inv_1)
+   0.10    2.64 v _2400_/Y (sky130_fd_sc_hd__inv_1)
+   0.55    3.19 ^ _2500_/B (sky130_fd_sc_hd__xor2_1)
+   0.46    3.65 ^ _2500_/X (sky130_fd_sc_hd__xor2_1)
+   0.23    3.88 ^ _201_/D (sky130_fd_sc_hd__dfxtp_2)
+   3.88    3.88   data arrival time
+
+   4.00    4.00   clock clk (rise edge)
+   0.00    4.00   clock network delay (ideal)
+   4.00    4.00   _201_/CLK (sky130_fd_sc_hd__dfxtp_2)
+  -0.28    3.72   library setup time
+   3.72    3.72   data required time
+---------------------------------------------------------
+   3.72    3.72   data required time
+  -3.88   -3.88   data arrival time
+---------------------------------------------------------
+                   slack (VIOLATED) -0.16
+
+Startpoint: _102_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: _202_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ _102_/CLK (sky130_fd_sc_hd__dfxtp_1)
+   0.16    0.16 ^ _102_/Q (sky130_fd_sc_hd__dfxtp_1)
+   0.31    0.47 v _3010_/A (sky130_fd_sc_hd__and4_2)
+   0.37    0.84 v _3010_/X (sky130_fd_sc_hd__and4_2)
+   0.19    1.03 ^ _3100_/B (sky130_fd_sc_hd__nand2_2)
+   0.13    1.16 v _3100_/Y (sky130_fd_sc_hd__nand2_2)
+   0.29    1.45 ^ _3200_/A (sky130_fd_sc_hd__o2bb2ai_1)
+   0.26    1.71 ^ _3200_/Y (sky130_fd_sc_hd__o2bb2ai_1)
+   0.17    1.88 v _3300_/A (sky130_fd_sc_hd__clkinv_1)
+   0.09    1.97 ^ _3300_/Y (sky130_fd_sc_hd__clkinv_1)
+   0.58    2.55 v _3400_/A (sky130_fd_sc_hd__mux2i_1)
+   0.52    3.07 v _3400_/Y (sky130_fd_sc_hd__mux2i_1)
+   0.22    3.29 ^ _3500_/A (sky130_fd_sc_hd__nor2_1)
+   0.12    3.41 v _3500_/Y (sky130_fd_sc_hd__nor2_1)
+   0.46    3.87 v _202_/D (sky130_fd_sc_hd__dfxtp_1)
+   3.87    3.87   data arrival time
+
+   4.00    4.00   clock clk (rise edge)
+   0.00    4.00   clock network delay (ideal)
+   4.00    4.00   _202_/CLK (sky130_fd_sc_hd__dfxtp_1)
+  -0.28    3.72   library setup time
+   3.72    3.72   data required time
+---------------------------------------------------------
+   3.72    3.72   data required time
+  -3.87   -3.87   data arrival time
+---------------------------------------------------------
+                   slack (VIOLATED) -0.15
+
+===========================================================================
+report_wns
+===========================================================================
+wns -0.150000
+
+===========================================================================
+report_tns
+===========================================================================
+tns -1.200000
+
+===========================================================================
+report_check_types
+===========================================================================
+                    Endpoint                         Setup    Hold
+                    -------------------------------- -------- --------
+                    _200_/D                            -0.25     0.08
+                    _201_/D                            -0.16     0.09
+                    _202_/D                            -0.15     0.11
+                    ... (5 more violated paths) ...
