@@ -1,0 +1,37 @@
+# SignOff Copilot — tool paths and PDK configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Adjust binary paths to match your local installation.
+# Set the SIGNOFF_PDK_ROOT environment variable to override pdk.root at runtime.
+#
+# Quick-start (macOS / Linux with Homebrew or conda):
+#   brew install yosys
+#   conda install -c conda-forge opensta
+#   export SIGNOFF_PDK_ROOT=$HOME/.volare/sky130A
+# ─────────────────────────────────────────────────────────────────────────────
+
+tools:
+  # Yosys RTL synthesis — add full path if not on PATH
+  # e.g.  /usr/local/bin/yosys  or  /opt/homebrew/bin/yosys
+  yosys: yosys
+
+  # OpenSTA static timing analysis
+  # Binary may be called 'sta' or 'opensta' depending on build
+  opensta: opensta
+
+  # OpenROAD place-and-route (optional — only used with --pnr flag)
+  openroad: openroad
+
+# ── Sky130 Open PDK ─────────────────────────────────────────────────────────
+pdk:
+  # Root of the sky130A PDK installation
+  root: "~/.volare/sky130A"
+
+  # Liberty timing library (tt corner, 25 °C, 1.8 V)
+  liberty: "~/.volare/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib"
+
+# ── Runtime settings ────────────────────────────────────────────────────────
+# Directory where run artifacts are stored (relative to project root)
+runs_dir: "runs"
+
+# Timeout in seconds for each tool invocation (0 = no timeout)
+tool_timeout_sec: 600

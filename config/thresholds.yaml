@@ -1,0 +1,28 @@
+# SignOff Copilot — pass/fail thresholds
+# ─────────────────────────────────────────────────────────────────────────────
+# All metrics must satisfy their threshold for an overall PASS verdict.
+# Override per-design by placing a thresholds.yaml in designs/<design>/.
+# ─────────────────────────────────────────────────────────────────────────────
+
+thresholds:
+  # ── Timing ─────────────────────────────────────────────────────────────
+  # Worst Negative Slack: must be ≥ 0 (no setup violations)
+  wns_ns_min: 0.0
+
+  # Total Negative Slack: must be ≥ 0
+  tns_ns_min: 0.0
+
+  # Maximum number of setup/hold timing violations
+  max_timing_violations: 0
+
+  # ── Physical / DRC ─────────────────────────────────────────────────────
+  # No DRC violations allowed for a clean signoff
+  max_drc_violations: 0
+
+  # ── Capacity ────────────────────────────────────────────────────────────
+  # Placement utilization — keep below 85% for routability headroom
+  max_utilization_pct: 85.0
+
+  # ── Sanity ──────────────────────────────────────────────────────────────
+  # Catches degenerate empty syntheses (should synthesise at least one cell)
+  min_cell_count: 1
