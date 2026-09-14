@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SignOff Copilot — {{ design }} / {{ run_id }}</title>
+  <style>
+    /* ── Reset & base ────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f4f6f9;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+    a { color: #4361ee; text-decoration: none; }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    .page-wrapper { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    .header {
+      background: #1a1a2e;
+      color: #fff;
+      border-radius: 12px;
+      padding: 2rem 2.5rem;
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .header .meta { font-size: 0.85rem; color: #adb5bd; margin-top: 0.25rem; }
+    .header .meta span { margin-right: 1.5rem; }
+
+    /* ── Overall verdict badge ──────────────────────────────── */
+    .verdict-badge {
+      font-size: 1.8rem;
+      font-weight: 800;
+      padding: 0.5rem 1.5rem;
+      border-radius: 8px;
+      letter-spacing: 0.05em;
+    }
+    .verdict-badge.pass { background: #d1fae5; color: #065f46; }
+    .verdict-badge.fail { background: #fee2e2; color: #991b1b; }
+
+    /* ── Section cards ───────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 1.5rem 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #4361ee;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #e8ecf4;
+    }
+
+    /* ── Metrics table ───────────────────────────────────────── */
+    table.metrics {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    table.metrics th {
+      text-align: left;
+      padding: 0.6rem 0.8rem;
+      background: #f0f2f8;
+      font-weight: 600;
+      color: #555;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    table.metrics td {
+      padding: 0.55rem 0.8rem;
+      border-bottom: 1px solid #f0f2f8;
+      vertical-align: middle;
+    }
+    table.metrics tr:last-child td { border-bottom: none; }
+    table.metrics tr:hover td { background: #f9fafb; }
+
+    /* ── Row badges ─────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge.pass { background: #d1fae5; color: #065f46; }
+    .badge.fail { background: #fee2e2; color: #991b1b; }
+    .badge.skip { background: #fef9c3; color: #713f12; }
+
+    /* ── AI summary ─────────────────────────────────────────── */
+    .ai-summary {
+      background: #eef2ff;
+      border-left: 4px solid #4361ee;
+      border-radius: 0 8px 8px 0;
+      padding: 1rem 1.2rem;
+      font-size: 0.95rem;
+      color: #2d3748;
+      line-height: 1.7;
+    }
+    .ai-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #4361ee;
+      margin-bottom: 0.4rem;
+    }
+
+    /* ── Worst path (collapsible) ───────────────────────────── */
+    details summary {
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #4361ee;
+      padding: 0.3rem 0;
+      user-select: none;
+    }
+    details summary:hover { color: #2941cc; }
+    pre.path-excerpt {
+      margin-top: 0.75rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 1rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre;
+      font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+    }
+
+    /* ── Key numbers strip ──────────────────────────────────── */
+    .kpi-strip {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .kpi {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 1rem 1.5rem;
+      flex: 1 1 140px;
+      min-width: 130px;
+      text-align: center;
+    }
+    .kpi .kpi-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; }
+    .kpi .kpi-value { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; margin-top: 0.2rem; }
+    .kpi .kpi-value.bad  { color: #dc2626; }
+    .kpi .kpi-value.good { color: #059669; }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .footer {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #9ca3af;
+      margin-top: 3rem;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <div class="header">
+    <div>
+      <h1>🔬 SignOff Copilot Report</h1>
+      <div class="meta">
+        <span><strong>Design:</strong> {{ design }}</span>
+        <span><strong>Run:</strong> {{ run_id }}</span>
+        <span><strong>Clock:</strong> {{ clock_period_ns }} ns ({{ freq_mhz }} MHz)</span>
+        <span><strong>Timestamp:</strong> {{ timestamp }}</span>
+      </div>
+    </div>
+    <div class="verdict-badge {{ 'pass' if status == 'PASS' else 'fail' }}">
+      {{ '✅ PASS' if status == 'PASS' else '❌ FAIL' }}
+    </div>
+  </div>
+
+  <!-- ── KPI strip ──────────────────────────────────────────── -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">WNS</div>
+      <div class="kpi-value {% if wns_ns is not none and wns_ns < 0 %}bad{% elif wns_ns is not none %}good{% endif %}">
+        {{ "%.4f"|format(wns_ns) if wns_ns is not none else "—" }} ns
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">TNS</div>
+      <div class="kpi-value {% if tns_ns is not none and tns_ns < 0 %}bad{% elif tns_ns is not none %}good{% endif %}">
+        {{ "%.4f"|format(tns_ns) if tns_ns is not none else "—" }} ns
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Violations</div>
+      <div class="kpi-value {{ 'bad' if num_timing_violations > 0 else 'good' }}">
+        {{ num_timing_violations }}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">DRC</div>
+      <div class="kpi-value {{ 'bad' if num_drc_violations > 0 else 'good' }}">
+        {{ num_drc_violations }}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Cells</div>
+      <div class="kpi-value">{{ "{:,}".format(cell_count) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Runtime</div>
+      <div class="kpi-value">{{ "%.0f"|format(runtime_sec) }} s</div>
+    </div>
+    {% if utilization_pct is not none %}
+    <div class="kpi">
+      <div class="kpi-label">Utilization</div>
+      <div class="kpi-value {{ 'bad' if utilization_pct > 85 else 'good' }}">
+        {{ "%.1f"|format(utilization_pct) }}%
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── AI Summary ─────────────────────────────────────────── -->
+  {% if llm_summary %}
+  <div class="card">
+    <h2>🤖 AI Summary</h2>
+    <div class="ai-label">Generated by LLM — verdict determined independently by the rules engine</div>
+    <div class="ai-summary">{{ llm_summary }}</div>
+  </div>
+  {% endif %}
+
+  <!-- ── Metrics table ──────────────────────────────────────── -->
+  <div class="card">
+    <h2>📋 Metric Details</h2>
+    <table class="metrics">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Value</th>
+          <th>Threshold</th>
+          <th>Status</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in metric_rows %}
+        <tr>
+          <td><strong>{{ row.name }}</strong></td>
+          <td><code>{{ row.value }}</code></td>
+          <td><code>{{ row.threshold }}</code></td>
+          <td>
+            {% if row.passed %}
+              <span class="badge pass">Pass</span>
+            {% else %}
+              <span class="badge fail">Fail</span>
+            {% endif %}
+          </td>
+          <td style="color:#6b7280; font-size:0.85rem;">{{ row.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Worst timing path (collapsible) ───────────────────── -->
+  {% if worst_path_excerpt %}
+  <div class="card">
+    <h2>⚡ Worst Timing Path</h2>
+    <details {% if status == 'FAIL' %}open{% endif %}>
+      <summary>Click to {{ 'collapse' if status == 'FAIL' else 'expand' }} critical path</summary>
+      <pre class="path-excerpt">{{ worst_path_excerpt | e }}</pre>
+    </details>
+  </div>
+  {% endif %}
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <div class="footer">
+    Generated by <strong>SignOff Copilot v0.1.0</strong> &nbsp;·&nbsp;
+    Deterministic verdict, AI-assisted writeup &nbsp;·&nbsp;
+    {{ timestamp }}
+  </div>
+
+</div>
+</body>
+</html>
