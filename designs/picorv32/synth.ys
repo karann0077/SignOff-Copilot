@@ -1,0 +1,37 @@
+# designs/picorv32/synth.ys
+# ─────────────────────────────────────────────────────────────────────────────
+# Yosys synthesis script for picorv32 → Sky130 gate-level netlist
+#
+# Usage (called by orchestrator.py via subprocess):
+#   yosys designs/picorv32/synth.ys
+#
+# Environment variables expected:
+#   DESIGN_TOP   — top-level module name  (default: picorv32)
+#   RTL_DIR      — path to RTL source dir
+#   NETLIST_OUT  — path for output netlist verilog
+#   LIBERTY      — path to Sky130 Liberty file
+#   SYNTH_LOG    — path to write synthesis log
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Read RTL ────────────────────────────────────────────────────────────────
+read_verilog -sv $env(RTL_DIR)/picorv32.v
+
+# ── Generic synthesis (technology-independent) ───────────────────────────────
+synth -top $env(DESIGN_TOP) -flatten
+
+# ── Technology mapping to Sky130 standard cells ──────────────────────────────
+# Map flip-flops
+dfflibmap -liberty $env(LIBERTY)
+
+# Map combinational logic (use ABC with timing-aware mapping)
+abc -liberty $env(LIBERTY) -constr /dev/null
+
+# ── Clean up ────────────────────────────────────────────────────────────────
+clean
+
+# ── Reports ─────────────────────────────────────────────────────────────────
+# Cell count and area statistics — the log parser reads this output
+stat -liberty $env(LIBERTY)
+
+# ── Write gate-level netlist ────────────────────────────────────────────────
+write_verilog -noattr -noexpr -nohex $env(NETLIST_OUT)
